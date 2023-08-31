@@ -16,6 +16,8 @@
 #include <EthernetUdp.h>
 #include <LiquidCrystal_I2C.h>
 
+//RTU Address
+byte addressByte = 0x44;
 
 // Defined tokens
 #define t_OFF 0
@@ -76,7 +78,7 @@ IPAddress localip(192, 168, 16, 177);
 unsigned int localPort = 8888;
 
 IPAddress remoteip(192, 168, 16, 24);
-unsigned int remotePort = 41946;            // keeps changing
+unsigned int remotePort = 9291;            // keeps changing
 
 int packets_rec = 0;
 int packets_sent = 0;
@@ -87,7 +89,7 @@ const int EEPROM_SIZE = 976;
 const int EEPROM_LAST_ADDRESS = EEPROM_SIZE - 1;
 const int ENTRY_SIZE = 8;
 
-const unsigned long eeprom_write_interval = 30 * 1000; // 15 min
+const unsigned long eeprom_write_interval = 15 * 30 * 1000; // 15 min
 const unsigned long write_interval = 5 * 1000; // 15 min
 static unsigned long eeprompreviousMillis = 0;
 static unsigned long writepreviousMillis = 0;
@@ -194,6 +196,15 @@ bool saveIP = false;
 bool doneviewing = false;
 int currentHistAddress = 0;
 bool doneconfiguring = false;
+
+
+// DCP init
+byte startOfMessage = 0xAA;
+byte functionCode = 0xFC;
+
+bool alarmSent = false;
+byte alarmValue = 0x00;
+
 
 
 /**
@@ -378,38 +389,86 @@ void loop() {
         Serial.print(F("State changed to: "));
         switch (temperatureRange) {
             case Major_Under:
+                alarmValue = 0x01;
                 Serial.println(F("Major_Under"));
                 leds[2] = CRGB::Purple;
-                UDPalarmBuffer("Alarm::Maj_U");
+                //UDPalarmBuffer("Alarm::Maj_U");
                 FastLED.show();
                 break;
             case Minor_Under:
+                alarmValue = 0x02;
                 Serial.println(F("Minor_Under"));
-                UDPalarmBuffer("Alarm::Min_U");
+               // UDPalarmBuffer("Alarm::Min_U");
                 leds[2] = CRGB::Blue;
                 FastLED.show();
                 break;
             case Comfortable:
+                alarmValue = 0x00;
                 Serial.println(F("Comfortable"));
-                UDPalarmBuffer("Comfortable");
+                //UDPalarmBuffer("Comfortable");
                 leds[2] = CRGB::Green;
                 FastLED.show();
                 break;
             case Minor_Over:
+                alarmValue = 0x0C;
                 Serial.println(F("Minor_Over"));
-                UDPalarmBuffer("Alarm::Min_O");
+                //UDPalarmBuffer("Alarm::Min_O");
                 leds[2] = CRGB::Orange;
                 FastLED.show();
                 break;
             case Major_Over:
+                alarmValue = 0x08;
                 Serial.println(F("Major_Over"));
-                UDPalarmBuffer("Alarm::Maj_O");
+                //UDPalarmBuffer("Alarm::Maj_O");
                 leds[2] = CRGB::Red;
                 FastLED.show();
                 break;
         }
       previousTemperatureRange = temperatureRange;  
   }
+
+
+int packetSize = Udp.parsePacket();
+if (packetSize) {
+  byte packetBuffer[UDP_TX_PACKET_MAX_SIZE];
+  int len = Udp.read(packetBuffer, UDP_TX_PACKET_MAX_SIZE);
+  if (len >= 5) {
+    
+    packets_rec = packets_rec + 1;
+    byte receivedStartOfMessage = packetBuffer[0];
+    byte receivedFunctionCode = packetBuffer[1];
+    byte receivedAddressByte = packetBuffer[2];
+    byte receivedOpcode = packetBuffer[3];
+    byte receivedChecksum = packetBuffer[4];
+
+    if (receivedStartOfMessage == startOfMessage &&
+        receivedFunctionCode == functionCode &&
+        receivedAddressByte == addressByte) {
+          
+      byte calculatedChecksum = calculate_bch(receivedOpcode);
+      if (calculatedChecksum == receivedChecksum) {
+        byte responsePacket[UDP_TX_PACKET_MAX_SIZE];
+        
+        responsePacket[0] = startOfMessage;
+        responsePacket[1] = functionCode;
+        responsePacket[2] = addressByte;
+        responsePacket[3] = _temperature;
+        responsePacket[4] = alarmValue;
+        responsePacket[5] = calculate_bch(_temperature^alarmValue);
+
+        // Send the response packet
+        Udp.beginPacket(remoteip, remotePort);
+        Udp.write(responsePacket, 6); 
+        Udp.endPacket();
+        packets_sent = packets_sent + 1;
+      }
+      else{
+        displayBCH(receivedChecksum,calculatedChecksum);
+      }
+    }
+  }
+}
+
 
   
     if (Ethernet.linkStatus() == LinkON) {
@@ -1002,6 +1061,39 @@ void clearReplyBuffer(){
   }
 }
 
+byte calculate_bch(byte data) {
+    byte nBCHpoly = 0xB8;
+    byte fBCHpoly = 0xFF;
+    byte bch = data;
+
+    for (int j = 0; j < 8; j++) {
+        if (bch & 1) {
+            bch = (bch >> 1) ^ nBCHpoly;
+        } else {
+            bch >>= 1;
+        }
+    }
+    bch ^= fBCHpoly;
+    return bch;
+}
+
+
+
+/**
+ * @brief Display Main menu on Crystal LCD
+ */
+void displayBCH(byte receive, byte expected){
+      lcd.clear();
+      lcd.setCursor(0, 0);
+      lcd.print( "BCH rec: ");
+      lcd.print(receive);
+      lcd.setCursor(0, 1);
+      lcd.print( "BCH exp: ");
+      lcd.print(expected);
+      delay(5000);
+      displayMenu(0);
+      
+  }
 
 void displayMenu(int currentMenu) {
   lcd.clear();
@@ -1092,20 +1184,20 @@ void performAction(int action) {
         case 0:
           lcd.clear();
           readEntry(976,ipAddress,16 );
-          //Serial.println(ipAddress);
+          Serial.println(ipAddress);
           networkloop();
           writeEntry(976, ipAddress, sizeof(ipAddress));
-          //Serial.println(ipAddress);
+          Serial.println(ipAddress);
           currentMenu = 1;       
           displayMenu(currentMenu);
           break;
         case 1:
           lcd.clear();
           readEntry(991,ipAddress,16 );
-          //Serial.println(ipAddress);
+          Serial.println(ipAddress);
           networkloop();
           writeEntry(991, ipAddress, sizeof(ipAddress));
-          //Serial.println(ipAddress);
+          Serial.println(ipAddress);
           currentMenu = 1;       
           displayMenu(currentMenu);
           break;

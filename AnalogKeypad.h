@@ -15,11 +15,11 @@ public:
     //Serial.println(analogValue);
     delay(125);
 
-    if (analogValue >= 0 && analogValue <= 30) {
+    if (analogValue >= 0 && analogValue <= 45) {
       return 1; // Button 1 pressed
-    } else if (analogValue >= 31 && analogValue <= 80) {
+    } else if (analogValue >= 46 && analogValue <= 90) {
       return 2; // Button 2 pressed
-    } else if (analogValue >= 81 && analogValue <= 150) {
+    } else if (analogValue >= 91 && analogValue <= 150) {
       return 3; // Button 3 pressed
     } else if (analogValue >= 151 && analogValue <= 300) {
       return 4; // Button 4 pressed

@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: rgb(231, 228, 228);
+            margin: 0;
+            padding: 0;
+        }
+        
+        .device-container {
+        display: flex;
+        flex-direction:row;
+        justify-content: space-around;
+        margin: 15px 0;
+    }
+
+
+        .container {
+            max-width: 600px;
+            margin: 50px auto;
+            padding: 20px;
+            text-align: center;
+            background-color: #fff;
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        h1 {
+            color: #333;
+        }
+
+        .device-info {
+            background-color: #2b72ff;
+            padding: 20px;
+            border-radius: 8px;
+            color: white;
+            font-weight: bold;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        .temperature-box {
+            background-color: #f0f0f0;
+            padding: 20px;
+            border-radius: 8px;
+        }
+
+
+        .logo {
+        width: 30px;
+        height: 30px;
+        margin-left: 20px;
+        }
+
+        .alarm-box {
+            padding: 20px;
+            border-radius: 8px;
+            color: white;
+            font-weight: bold;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            transition: background-color 0.3s;
+        }
+
+        .alarm-box.no-alarm {
+            background-color: #00ff00dd;
+        }
+
+        .alarm-box.major-over {
+            background-color: #ff0000;
+        }
+
+        .alarm-box.minor-over {
+            background-color: #ffa500;
+        }
+
+        .alarm-box.minor-under {
+            background-color: #800080;
+        }
+
+        .alarm-box.major-under {
+            background-color: #0000ff;
+        }
+
+        .alarm-box.offline {
+            background-color: #b3b3b3;
+        }
+
+        #temperature {
+            font-size: 24px;
+            font-weight: bold;
+            color: #007bff;
+        }
+
+        #alarm-status {
+            font-size: 24px;
+            font-weight: bold;
+        }
+        
+    </style>
+    <title>ALARM MONITORING SYSTEM</title>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+
+    <script>
+        function updateData() {
+            $.get("/data", function(data) {
+                console.log("Received data: ", data);
+                
+                // Clear existing entries and update with new data
+                $("#devices").empty();
+                for (const device of data.data_list) {
+                    let alarmStatus = "Offline";
+                    let alarmClass = "alarm-box";
+                    if (device[3]) {
+                        alarmStatus = getAlarmStatus(device[1]);
+                        alarmClass += " " + getAlarmClass(device[1]);
+                    }
+                    else{
+                        alarmClass += " " +" offline"
+                    }
+                    const deviceHtml = `
+                        <div class="device-container">
+                            <div class="device-info">
+                                <p>Device: <span>${"0x" + device[2].toString(16)}</span></p>
+                            </div>
+                            <div class="temperature-box">
+                                <p>Current Temperature: <span>${device[0]}</span> F</p>
+                            </div>
+                            <div class="${alarmClass}">
+                                <p>Alarm State: <span>${alarmStatus}</span></p>
+                            </div>
+                        </div>
+                    `;
+                    $("#devices").append(deviceHtml);
+                }
+            });
+        }
+    
+        function getAlarmStatus(alarmCode) {
+            const alarmStatusMap = {
+                0: "Comfortable",
+                8: "Major Over",
+                12: "Minor Over",
+                2: "Minor Under",
+                1: "Major Under"
+            };
+            return alarmStatusMap[alarmCode] || "Unknown";
+        }
+    
+        function getAlarmClass(alarmCode) {
+            const alarmClassMap = {
+                0: "no-alarm",
+                8: "major-over",
+                12: "minor-over",
+                2: "minor-under",
+                1: "major-under"
+            };
+            return alarmClassMap[alarmCode] || "";
+        }
+    
+        $(document).ready(function() {
+            updateData();
+            setInterval(updateData, 1000);
+        });
+    </script>    
+</head>
+<body>
+    <div class="container">
+        <h1>ALARM MONITORING SYSTEM</h1>
+        <div id="devices">
+        </div>
+    </div>
+</body>
+</html>
